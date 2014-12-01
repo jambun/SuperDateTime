@@ -192,13 +192,16 @@ use HTML::TreeBuilder;
 use Time::Local; 
 #use Data::Dumper;
 use HTML::Entities qw(decode_entities);
+use JSON;
 
 my $prefs = preferences('plugin.superdatetime');
 
+my $twccity = '';
+
 my $log = Slim::Utils::Log->addLogCategory({
 	'category'     => 'plugin.superdatetime',
-	'defaultLevel' => 'WARN',
-#	'defaultLevel' => 'DEBUG',
+#	'defaultLevel' => 'WARN',
+	'defaultLevel' => 'DEBUG',
 	'description'  => getDisplayName(),
 });
 
@@ -1842,6 +1845,46 @@ our %mapping = ('arrow_up' => 'up',
 					'knob' => 'done',
 					'size.hold'  => 'size.hold');
 
+sub getTWCCity {  #Set up Async HTTP request for The Weather Channel's explicit location jjj
+	my $city = shift;
+#	my $timerObj = shift; #Should be undef
+	my $client = undef;
+	my $refreshItem = undef;
+	my $url = 'http://www.weather.com/weather/today/' . $city;
+	my $http = Slim::Networking::SimpleAsyncHTTP->new(\&gotTWCCity,
+							  \&gotErrorViaHTTP,
+							  {caller => 'getTWCCity',
+							   callerProc => \&getTWCCity,
+							   client => $client,
+							   refreshItem => $refreshItem});
+	$log->info("async request: $url");
+	
+	$http->get($url, 'User-Agent' => 'Mozilla/5.0 (Windows NT 5.1; rv:12.0) Gecko/20100101 Firefox/12.0',
+	'Accept-Language' => 'en-us,en;q=0.5',
+	'Accept' => 'text/html',
+	'Accept-Charset' => 'UTF-8');
+}
+
+sub gotTWCCity {  #TWC city was received jjj
+	my $http = shift;
+
+#	my $params = $http->params();
+#	my $client = $params->{'client'};
+#	my $refreshItem = $params->{'refreshItem'};
+
+	$log->info("in gotTWCCity got " . $http->url());
+
+	my $content = $http->content();
+
+# these are the two refs found - who knows which, if either, will be reliable ...
+#	Drupal.settings.twc.contexts.loc.id = 'ASXX0023:1:AS';
+#	window.explicit_location = "ASXX0023:1:AS";
+
+	$content =~ /window\.explicit_location = "(.*?)";/;
+	$twccity = $1;
+}
+
+
 ##################################################
 ### Super Functions ###
 ##################################################
@@ -1867,6 +1910,10 @@ sub initPlugin {
 	# Get previous settings or set default
 	if ($prefs->get('city') eq '') {
 		$prefs->set('city','60614'); #Default to Chicago... cuz Chicago is where it's at!
+	}
+    # who knows how this will go! jjj
+	if ($twccity eq '') {
+		getTWCCity($prefs->get('city'));
 	}
 
 	#Not everyone will need weather icons - default disabled
@@ -2949,12 +2996,14 @@ sub replaceMacrosPer {
 	return $string;
 }
 
+
 sub getWeatherToday {  #Set up Async HTTP request for Weather
 	my $timerObj = shift; #Should be undef
 	my $client = shift;
 	my $refreshItem = shift;
-
-	my $url = 'http://www.weather.com/weather/today/' . $prefs->get('city');
+	# jjj
+	my $url = 'http://dsx.weather.com/wxd/v2/MORecord/en_US/' . $twccity;
+#	my $url = 'http://www.weather.com/weather/today/' . $prefs->get('city');
 	my $http = Slim::Networking::SimpleAsyncHTTP->new(\&gotWeatherToday,
 							  \&gotErrorViaHTTP,
 							  {caller => 'getWeatherToday',
@@ -2980,310 +3029,84 @@ sub gotWeatherToday {  #Weather data for today was received
 	#$::d_plugins && msg("SuperDateTime: content type is " . $http->headers()->{'Content-Type'} . "\n");
 
 	my $content = $http->content();
-
 	my $tree = HTML::TreeBuilder->new; # empty tree
 	$tree->parse($content);
 	$tree->eof();
+	my $outcome_txt = '';
+
+	my $json = decode_json $http->content();
+	my $modata = $json->{'MOData'};
+
+	# assuming all or notihng
+	if ($modata->{'tmpF'} eq '') {
+		$status = '-';
+		$log->warn('Error parsing weather today');
+	}
 
 	$wetData{-1}{'forecastTOD'} = 'Right Now';
 	
-	my $outcome_txt = ($tree->look_down( "_tag", "span", "itemprop", "temperature-fahrenheit"))[0];
-	if ($outcome_txt) {
-		$wetData{'temperatureF'} = $outcome_txt->as_text;
-		$wetData{'temperatureC'} = FtoC($outcome_txt->as_text);
-	}
-	else {
-		$status = '-';
-		$log->warn('Error parsing current temperature');	
-	}
-	
-	$outcome_txt = ($tree->look_down( "_tag", "span", "itemprop", "feels-like-temperature-fahrenheit"))[0];
-	if ($outcome_txt) {
-		$wetData{'feelslikeF'} = $outcome_txt->as_text;
-		$wetData{'feelslikeC'} = FtoC($outcome_txt->as_text);
-	}
-	else {
-		$status = '-';
-		$log->warn('Error parsing feels like temperature');	
-	}
+	$wetData{'temperatureF'} = $modata->{'tmpF'};
+	$wetData{'temperatureC'} = $modata->{'tmpC'};
+	$wetData{'feelslikeF'} = $modata->{'flsLkIdxF'};
+	$wetData{'feelslikeC'} = $modata->{'flsLkIdxC'};
+	$wetData{'windspeed_mh'} = $modata->{'wDirAsc'} . $modata->{'wSpdM'};
+	$wetData{'windspeed_kh'} = $modata->{'wDirAsc'} . $modata->{'wSpdK'};
+	$wetData{'windspeed_kth'} = $modata->{'wDirAsc'} . $modata->{'wSpdKn'};
+	$wetData{'windspeed_ms'} = $modata->{'wSpdM'}*16.09344/36;
+	$wetData{'windspeed_ms'} = int($wetData{'windspeed_ms'} + .5 * ($wetData{'windspeed_ms'} <=> 0)); #Funky round
+	$wetData{'windspeed_ms'} = $modata->{'wDirAsc'} . $wetData{'windspeed_ms'};
+	$wetData{'skyCondition'} = $modata->{'wx'};
+	$wetData{'dewpointF'} = $modata->{'dwptF'};
+	$wetData{'dewpointC'} = $modata->{'dwptC'};
+	$wetData{'pressureIN'} = $modata->{'alt'};
+	$wetData{'pressureMB'} = $modata->{'alt'} * 33.8639;
+	$wetData{'pressureMB'} = int($wetData{'pressureMB'} + .5 * ($wetData{'pressureMB'} <=> 0)); #Funky round			
+	$wetData{'pressureT'} = '~' if $modata->{'baroTrnd'} == 0;
+	$wetData{'pressureT'} = '+' if $modata->{'baroTrnd'} == 1;
+	$wetData{'pressureT'} = '-' if $modata->{'baroTrnd'} == 2;
+	$wetData{'humidity'} = $modata->{'rH'} . '%';
+	$wetData{'UVindexNum'} = $modata->{'uvIdx'};
+	$wetData{'UVindexTxt'} = $modata->{'uvDes'};
 
-	$outcome_txt = ($tree->look_down( "_tag", "div", "class", "wx-wind-label"))[0];
-	if ($outcome_txt) {
-		if ($outcome_txt->as_text =~ m/(.*) at (\d+) mph/) {
-			$wetData{'windspeed_mh'} = $2;
-			$wetData{'windspeed_kh'} = $2*1.609344;
-			$wetData{'windspeed_kh'} = int($wetData{'windspeed_kh'} + .5 * ($wetData{'windspeed_kh'} <=> 0)); #Funky round
-	
-			$wetData{'windspeed_ms'} = $2*16.09344/36;
-			$wetData{'windspeed_ms'} = int($wetData{'windspeed_ms'} + .5 * ($wetData{'windspeed_ms'} <=> 0)); #Funky round
-			$wetData{'windspeed_kth'} = $2/1.1515;
-			$wetData{'windspeed_kth'} = int($wetData{'windspeed_kth'} + .5 * ($wetData{'windspeed_kth'} <=> 0)); #Funky round
-			
-			$wetData{'windspeed_mh'} = $1 . $wetData{'windspeed_mh'};
-			$wetData{'windspeed_kh'} = $1 . $wetData{'windspeed_kh'};
-			$wetData{'windspeed_ms'} = $1 . $wetData{'windspeed_ms'};
-			$wetData{'windspeed_kth'} = $1 . $wetData{'windspeed_kth'};
+	# not currently supporting these here - seem to be all forecast stuff
+	# which isn't in the MO record jjj
+#	$wetData{$i-1}{'forecastIcon'} = $2;
+#	$wetData{$i-1}{'forecastIconURLSmall'} = '/plugins/SuperDateTime/html/images/' . $2 . '.png';
+#	push(@WETdisplayItems1temp, $wetData{-1}{'forecastTOD'});
+#	push(@WETdisplayItems2temp, localizeLongWeather($outcome_txt->as_text));
+#	$wetData{1}{'forecastPrec'} = 'SNOW ' . $1;
+#	$wetData{-1}{'forecastPrec'} = 'SNOW ' . $1;
+#	$wetData{1}{'forecastPrec'} = 'RAIN ' . $1;
+#	$wetData{-1}{'forecastPrec'} = 'RAIN ' . $1;
+#	$wetData{1}{'forecastPrec'} = 'PREC ' . $1;
+#	$wetData{-1}{'forecastPrec'} = 'PREC ' . $1;
+#	$wetData{-1}{'forecastPrec'} = 'RAIN ' . $2;
+#	$wetData{0}{'forecastPrec'} = 'RAIN '. $2;
+#	$wetData{-1}{'forecastPrec'} = 'SNOW ' . $2;
+#	$wetData{0}{'forecastPrec'} = 'SNOW '. $2;
+#	$wetData{-1}{'forecastPrec'} = 'PREC ' . $2;
+#	$wetData{0}{'forecastPrec'} = 'PREC '. $2;			
+#	$wetData{0}{'forecastTOD'} = 'Observed Today';
+#	$wetData{1}{'forecastTOD'} = 'Tonight';
+#	$wetData{0}{'forecastTempF'} = $1;
+#	$wetData{0}{'forecastType'} = 'High';
+#	$wetData{0}{'forecastTempC'} = FtoC($1);
+#	$wetData{-1}{'forecastTempF'} = $1;
+#	$wetData{-1}{'forecastType'} = 'High';
+#	$wetData{-1}{'forecastTempC'} = FtoC($1);
+#	$wetData{1}{'forecastTempF'} = $1;
+#	$wetData{1}{'forecastType'} = 'Low';
+#	$wetData{1}{'forecastTempC'} = FtoC($1);
+#	$wetData{-1}{'forecastTempF'} = $1;
+#	$wetData{-1}{'forecastType'} = 'Low';
+#	$wetData{-1}{'forecastTempC'} = FtoC($1);
+#	$wetData{'rain'} = $1;
+#	$wetData{'snow'} = $1;
+#	push(@WETdisplayItems1temp, $1);
+#	push(@WETdisplayItems2temp, localizeLongWeather($2));
+#	push(@WETdisplayItems1temp, $1);
+#	push(@WETdisplayItems2temp, localizeLongWeather($2));
 
-		}
-		else {
-			$status = '-';
-			$log->warn('Error parsing current wind');	
-		}
-	}
-	else {
-		$status = '-';
-		$log->warn('Error parsing current wind');	
-	}
-
-	#Icon array shifts by one depending on location
-	my @foo = $tree->look_down( "_tag", "img", "class", "wx-weather-icon");
-	my $offset = 0;
-	if ($#foo == 3) {
-		$offset = 1
-	}
-	
-	for(my $i=0; $i < 3; $i++) {
-		$outcome_txt = ($tree->look_down( "_tag", "img", "class", "wx-weather-icon"))[$offset+$i];
-		if ($outcome_txt) {
-			if ($outcome_txt->as_HTML =~ m/img alt="(.*)" class="wx-wea.*\/(\d+).png/) {
-				$wetData{$i-1}{'skyCondition'} = $1;
-				$wetData{$i-1}{'forecastIcon'} = $2;
-				$wetData{$i-1}{'forecastIconURLSmall'} = '/plugins/SuperDateTime/html/images/' . $2 . '.png';
-
-			}
-			else {
-				$status = '-';
-				$log->warn('Error parsing ' . $i . ' sky conditions and icon');	
-			}
-		}
-		else {
-			$status = '-';
-			$log->warn('Error parsing ' . $i . ' sky conditions and icon');	
-		}	
-	}
-		
-	$outcome_txt = ($tree->look_down( "_tag", "div", "class", qr(wx-dewpoint)))[0];
-	if ($outcome_txt) {
-		if ($outcome_txt->as_HTML =~ m/wx-data">(\d+)&deg;</) {
-			$wetData{'dewpointF'} = $1;
-			$wetData{'dewpointC'} = FtoC($1);
-		}
-		else {
-			$status = '-';
-			$log->warn('Error parsing current dew point');			
-		}
-	}
-	else {
-		$status = '-';
-		$log->warn('Error parsing current dew point');	
-	}
-
-	$outcome_txt = ($tree->look_down( "_tag", "span", "itemprop", "barometric-pressure-incheshg"))[0];
-	if ($outcome_txt) {
-		if ($outcome_txt->as_text =~ m/(\d+\.\d+)/) {
-			$wetData{'pressureIN'} = $1;
-			$wetData{'pressureMB'} = $1 * 33.8639;
-			$wetData{'pressureMB'} = int($wetData{'pressureMB'} + .5 * ($wetData{'pressureMB'} <=> 0)); #Funky round			
-		}
-		else {
-			$status = '-';
-			$log->warn('Error parsing current pressure');	
-		}
-	}
-	else {
-		$status = '-';
-		$log->warn('Error parsing current pressure');	
-	}
-
-	$outcome_txt = ($tree->look_down( "_tag", "span", "class", qr{wx-pressure}))[0];
-	if ($outcome_txt) {
-		if ($outcome_txt->as_HTML =~ m/wx-pressure-(.*)\"><\/span/) {
-			if ($1 eq 'steady') {
-				$wetData{'pressureT'} = '~'; #~ is not displayed in all player text locations
-			}
-			elsif ($1 eq 'down') {
-				$wetData{'pressureT'} = '-';
-			}
-			elsif ($1 eq 'up') {
-				$wetData{'pressureT'} = '+'; #+ is not displayed in all player text locations
-			}
-			else {
-				$status = '-';
-				$log->warn('Error parsing current pressure trend');			
-			}
-		}
-	}
-	else {
-		$status = '-';
-		$log->warn('Error parsing current pressure trend');	
-	}
-
-	#Now narrative
-	#Not applicable to all places, so don't warn if it doesn't exist
-	$outcome_txt = ($tree->look_down( "_tag", "p", "class", "wx-value"))[0];
-	if ($outcome_txt) {
-		push(@WETdisplayItems1temp, $wetData{-1}{'forecastTOD'});
-		push(@WETdisplayItems2temp, localizeLongWeather($outcome_txt->as_text));
-	}
-
-	$outcome_txt = ($tree->look_down( "_tag", "div", "class", "wx-data-part"))[7];
-	if ($outcome_txt) {
-		if ($outcome_txt->as_text =~ m/snow(\d+%)/) {
-			$wetData{1}{'forecastPrec'} = 'SNOW ' . $1;
-			
-			#Set tonights preceip as current in case its already night and there isnt a day precip avail
-			$wetData{-1}{'forecastPrec'} = 'SNOW ' . $1;
-		}
-		elsif ($outcome_txt->as_text =~ m/rain(\d+%)/) {
-			$wetData{1}{'forecastPrec'} = 'RAIN ' . $1;
-			
-			#Set tonights preceip as current in case its already night and there isnt a day precip avail
-			$wetData{-1}{'forecastPrec'} = 'RAIN ' . $1;
-		}
-		elsif ($outcome_txt->as_text =~ m/precip(\d+%)/) {
-			$wetData{1}{'forecastPrec'} = 'PREC ' . $1;
-			
-			#Set tonights preceip as current in case its already night and there isnt a day precip avail
-			$wetData{-1}{'forecastPrec'} = 'PREC ' . $1;
-		}
-		else {
-			$status = '-';
-			$log->warn('Error parsing tonight rain/snow');			
-		}
-	}
-	else {
-		$status = '-';
-		$log->warn('Error parsing tonight rain/snow');
-	}
-
-	#Day precip only avail during the day so don't error if not found
-	$outcome_txt = ($tree->look_down( "_tag", "div", "class", "wx-data-part"))[6];
-	if ($outcome_txt) {
-		if ($outcome_txt->as_text =~ m/Chance of (rain|snow|prec)(\d+%)/) {
-			if ($1 eq 'rain') {
-				$wetData{-1}{'forecastPrec'} = 'RAIN ' . $2;
-				$wetData{0}{'forecastPrec'} = 'RAIN '. $2;
-			}
-			elsif ($1 eq 'snow') {
-				$wetData{-1}{'forecastPrec'} = 'SNOW ' . $2;
-				$wetData{0}{'forecastPrec'} = 'SNOW '. $2;
-			}
-			else {
-				$wetData{-1}{'forecastPrec'} = 'PREC ' . $2;
-				$wetData{0}{'forecastPrec'} = 'PREC '. $2;			
-			}
-		}
-	}
-
-	#Check if today is observed
-	$outcome_txt = ($tree->look_down( "_tag", "div", "class", "wx-observed-label"))[0];
-	if ($outcome_txt) {
-		$wetData{0}{'forecastTOD'} = 'Observed Today';
-	}
-	else {
-		$wetData{0}{'forecastTOD'} = 'Today';
-	}
-	
-	$wetData{1}{'forecastTOD'} = 'Tonight';
-	
-	$outcome_txt = ($tree->look_down( "_tag", "div", "class", "wx-temperature"))[1];
-	if ($outcome_txt) {
-		if ($outcome_txt->as_HTML =~ m/wx-temperature">(\d+)<span/) {
-			$wetData{0}{'forecastTempF'} = $1;
-			$wetData{0}{'forecastType'} = 'High';
-			$wetData{0}{'forecastTempC'} = FtoC($1);
-
-			#If today is not yet observed, set as right now high
-			if ($wetData{0}{'forecastTOD'} eq 'Today') {
-				$wetData{-1}{'forecastTempF'} = $1;
-				$wetData{-1}{'forecastType'} = 'High';
-				$wetData{-1}{'forecastTempC'} = FtoC($1);
-			}
-		}
-		else {
-			$status = '-';
-			$log->warn('Error parsing today high');			
-		}
-	}
-	else {
-		$status = '-';
-		$log->warn('Error parsing today high');
-	}
-
-	$outcome_txt = ($tree->look_down( "_tag", "div", "class", "wx-temperature"))[2];
-	if ($outcome_txt) {
-		if ($outcome_txt->as_HTML =~ m/wx-temperature">(\d+)<span/) {
-			$wetData{1}{'forecastTempF'} = $1;
-			$wetData{1}{'forecastType'} = 'Low';
-			$wetData{1}{'forecastTempC'} = FtoC($1);
-
-			#If today is observed, set as right now low
-			if ($wetData{0}{'forecastTOD'} eq 'Observed Today') {
-				$wetData{-1}{'forecastTempF'} = $1;
-				$wetData{-1}{'forecastType'} = 'Low';
-				$wetData{-1}{'forecastTempC'} = FtoC($1);
-			}
-		}
-		else {
-			$status = '-';
-			$log->warn('Error parsing today low');			
-		}
-	}
-	else {
-		$status = '-';
-		$log->warn('Error parsing today low');
-	}	
-	
-	#Cycle through elements, if there's snow their index location changes
-	for (my $i=0; $i <= 7; $i++) {	
-		$outcome_txt = ($tree->look_down( "_tag", "div", "class", "wx-data-part wx-first"))[$i];
-		#$log->warn($outcome_txt->as_text);
-		if ($outcome_txt->as_text =~ m/Humidity:(\d+%)/) {
-			$wetData{'humidity'} = $1;
-		}
-		elsif ($outcome_txt->as_text =~ m/UV Index:(\d) - (.*)/) {
-				$wetData{'UVindexNum'} = $1;
-				$wetData{'UVindexTxt'} = $2;
-		}
-		elsif ($outcome_txt->as_text =~ m/Past 24-hr Precip:(.* in)/) {
-			$wetData{'rain'} = $1;
-		}
-		elsif ($outcome_txt->as_text =~ m/Past 24 Hours Snow:(.* in)/) {
-			$wetData{'snow'} = $1;
-		}
-		#elsif ($outcome_txt->as_text =~ m/Visibility:(.*)/) {
-			#TODO: No place holder for visibilty...
-		#}		
-	}
-	#Maybe add some debugging text if above are not found
-	
-	$outcome_txt = ($tree->look_down( "_tag", "div", "class", "wx-data-part wx-first "))[0];
-	if ($outcome_txt) {
-		if ($outcome_txt->as_text =~ m/(Next 6 Hours):(.*) Hourly Details/) {
-			push(@WETdisplayItems1temp, $1);
-			push(@WETdisplayItems2temp, localizeLongWeather($2));
-		}
-	}
-	else {
-		$status = '-';
-		$log->warn('Error parsing next 6 hour narrative');
-	}
-
-	for (my $i=0; $i < 2; $i++) {	
-		$outcome_txt = ($tree->look_down( "_tag", "div", "class", "wx-data-part "))[$i];
-		if ($outcome_txt) {
-			if ($outcome_txt->as_text =~ m/(.*):(.*)/) {
-				push(@WETdisplayItems1temp, $1);
-				push(@WETdisplayItems2temp, localizeLongWeather($2));
-			}
-		}
-		else {
-			$status = '-';
-			$log->warn('Error parsing ' . $i . ' narrative');
-		}
-	}
-		
-	$tree = $tree->delete;
 	refreshData(undef, $client, $refreshItem);
 }
 
