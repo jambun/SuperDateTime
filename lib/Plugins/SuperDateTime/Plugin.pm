@@ -1850,7 +1850,7 @@ sub getTWCCity {  #Set up Async HTTP request for The Weather Channel's explicit 
 #	my $timerObj = shift; #Should be undef
 	my $client = undef;
 	my $refreshItem = undef;
-	my $url = 'http://www.weather.com/weather/today/' . $city;
+	my $url = 'https://www.weather.com/weather/today/' . $city;
 	my $http = Slim::Networking::SimpleAsyncHTTP->new(\&gotTWCCity,
 							  \&gotErrorViaHTTP,
 							  {caller => 'getTWCCity',
@@ -3001,8 +3001,9 @@ sub getWeatherToday {  #Set up Async HTTP request for Weather
 	my $timerObj = shift; #Should be undef
 	my $client = shift;
 	my $refreshItem = shift;
-	# jjj
-	my $url = 'http://dsx.weather.com/wxd/v2/MORecord/en_US/' . $twccity;
+	# jjj hack - hardcoding city :( need to look into the new data getTWCCity is getting
+	my $url = 'https://dsx.weather.com/wxd/v2/MORecord/en_US/ASXX0023:1:AS';
+#	my $url = 'https://dsx.weather.com/wxd/v2/MORecord/en_US/' . $twccity;
 #	my $url = 'http://www.weather.com/weather/today/' . $prefs->get('city');
 	my $http = Slim::Networking::SimpleAsyncHTTP->new(\&gotWeatherToday,
 							  \&gotErrorViaHTTP,
