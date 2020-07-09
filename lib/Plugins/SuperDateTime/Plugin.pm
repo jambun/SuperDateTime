@@ -258,18 +258,19 @@ my %averages = ('last' => ''); #Used to store raw averages data and when they we
 #Used to store pointers to the data providers
 my %providers =  (#'1'  => \&getWeatherToday,
                   #'2'  => \&getLongWeatherTxt,
-                  '1' => \&getWeatherTomorrow,
-				  '2'  => \&get10day,
-                  '3'  => \&getWunderground,
-                  '4'  => \&getMLB,
-                  '5'  => \&getNFL,
-                  '6'  => \&getNBA,
-                  '7'  => \&getNHL,
-                  '8'  => \&getCBB,                  
-                  '9' => \&getCFB,
-                  '10' => \&getStocks,
-                  '11' => \&getLongWeather,                 
-                  '12' => \&getAverages);
+                  #'1' => \&getWeatherTomorrow,
+				  #'2'  => \&get10day,
+                  #'3'  => \&getWunderground,
+                  #'4'  => \&getMLB,
+                  #'5'  => \&getNFL,
+                  #'6'  => \&getNBA,
+                  #'7'  => \&getNHL,
+                  #'8'  => \&getCBB,                  
+                  #'9' => \&getCFB,
+                  #'10' => \&getStocks,
+                  #'11' => \&getLongWeather,                 
+                  #'12' => \&getAverages
+	);
 
 my @WETdisplayItems1 = ();
 my @WETdisplayItems2 = ();
@@ -3002,7 +3003,11 @@ sub getWeatherToday {  #Set up Async HTTP request for Weather
 	my $client = shift;
 	my $refreshItem = shift;
 	# jjj hack - hardcoding city :( need to look into the new data getTWCCity is getting
-	my $url = 'https://dsx.weather.com/wxd/v2/MORecord/en_US/ASXX0023:1:AS';
+#	my $url = 'https://dsx.weather.com/wxd/v2/MORecord/en_US/ASXX0023:1:AS';
+
+	# twc is dead, let's use metars! jjj
+	my $url = 'http://weather.rap.ucar.edu/surface/index.php?metarIds=YSCB&hoursStr=0';
+
 #	my $url = 'https://dsx.weather.com/wxd/v2/MORecord/en_US/' . $twccity;
 #	my $url = 'http://www.weather.com/weather/today/' . $prefs->get('city');
 	my $http = Slim::Networking::SimpleAsyncHTTP->new(\&gotWeatherToday,
@@ -3030,44 +3035,63 @@ sub gotWeatherToday {  #Weather data for today was received
 	#$::d_plugins && msg("SuperDateTime: content type is " . $http->headers()->{'Content-Type'} . "\n");
 
 	my $content = $http->content();
-	my $tree = HTML::TreeBuilder->new; # empty tree
-	$tree->parse($content);
-	$tree->eof();
-	my $outcome_txt = '';
 
-	my $json = decode_json $http->content();
-	my $modata = $json->{'MOData'};
+	my $temp;
+	my $baro;
 
-	# assuming all or notihng
-	if ($modata->{'tmpF'} eq '') {
-		$status = '-';
-		$log->warn('Error parsing weather today');
+	for my $line (split("\n", $content)) {
+		if ($line =~ /^ *YSCB/) {
+			$line =~ / (M?\d\d)\/M?\d\d Q(\d+) /;
+			$temp = $1;
+			$temp =~ s/M/-/;
+			$baro = $2;
+			last;
+		}
 	}
 
+#	my $tree = HTML::TreeBuilder->new; # empty tree
+#	$tree->parse($content);
+#	$tree->eof();
+#	my $outcome_txt = '';
+
+#	my $json = decode_json $http->content();
+#	my $modata = $json->{'MOData'};
+
+	# assuming all or notihng
+#	if ($modata->{'tmpF'} eq '') {
+#		$status = '-';
+#		$log->warn('Error parsing weather today');
+#	}
+
 	$wetData{-1}{'forecastTOD'} = 'Right Now';
+
+	$wetData{'temperatureC'} = $temp;
+	$wetData{'pressureMB'} = $baro;
+	$wetData{'pressureT'} = '?';
+	$wetData{'UVindexTxt'} = 'moo';
 	
-	$wetData{'temperatureF'} = $modata->{'tmpF'};
-	$wetData{'temperatureC'} = $modata->{'tmpC'};
-	$wetData{'feelslikeF'} = $modata->{'flsLkIdxF'};
-	$wetData{'feelslikeC'} = $modata->{'flsLkIdxC'};
-	$wetData{'windspeed_mh'} = $modata->{'wDirAsc'} . $modata->{'wSpdM'};
-	$wetData{'windspeed_kh'} = $modata->{'wDirAsc'} . $modata->{'wSpdK'};
-	$wetData{'windspeed_kth'} = $modata->{'wDirAsc'} . $modata->{'wSpdKn'};
-	$wetData{'windspeed_ms'} = $modata->{'wSpdM'}*16.09344/36;
-	$wetData{'windspeed_ms'} = int($wetData{'windspeed_ms'} + .5 * ($wetData{'windspeed_ms'} <=> 0)); #Funky round
-	$wetData{'windspeed_ms'} = $modata->{'wDirAsc'} . $wetData{'windspeed_ms'};
-	$wetData{'skyCondition'} = $modata->{'wx'};
-	$wetData{'dewpointF'} = $modata->{'dwptF'};
-	$wetData{'dewpointC'} = $modata->{'dwptC'};
-	$wetData{'pressureIN'} = $modata->{'alt'};
-	$wetData{'pressureMB'} = $modata->{'alt'} * 33.8639;
-	$wetData{'pressureMB'} = int($wetData{'pressureMB'} + .5 * ($wetData{'pressureMB'} <=> 0)); #Funky round			
-	$wetData{'pressureT'} = '~' if $modata->{'baroTrnd'} == 0;
-	$wetData{'pressureT'} = '+' if $modata->{'baroTrnd'} == 1;
-	$wetData{'pressureT'} = '-' if $modata->{'baroTrnd'} == 2;
-	$wetData{'humidity'} = $modata->{'rH'} . '%';
-	$wetData{'UVindexNum'} = $modata->{'uvIdx'};
-	$wetData{'UVindexTxt'} = $modata->{'uvDes'};
+#	$wetData{'temperatureF'} = $modata->{'tmpF'};
+#	$wetData{'temperatureC'} = $modata->{'tmpC'};
+#	$wetData{'feelslikeF'} = $modata->{'flsLkIdxF'};
+#	$wetData{'feelslikeC'} = $modata->{'flsLkIdxC'};
+#	$wetData{'windspeed_mh'} = $modata->{'wDirAsc'} . $modata->{'wSpdM'};
+#	$wetData{'windspeed_kh'} = $modata->{'wDirAsc'} . $modata->{'wSpdK'};
+#	$wetData{'windspeed_kth'} = $modata->{'wDirAsc'} . $modata->{'wSpdKn'};
+#	$wetData{'windspeed_ms'} = $modata->{'wSpdM'}*16.09344/36;
+#	$wetData{'windspeed_ms'} = int($wetData{'windspeed_ms'} + .5 * ($wetData{'windspeed_ms'} <=> 0)); #Funky round
+#	$wetData{'windspeed_ms'} = $modata->{'wDirAsc'} . $wetData{'windspeed_ms'};
+#	$wetData{'skyCondition'} = $modata->{'wx'};
+#	$wetData{'dewpointF'} = $modata->{'dwptF'};
+	# $wetData{'dewpointC'} = $modata->{'dwptC'};
+	# $wetData{'pressureIN'} = $modata->{'alt'};
+	# $wetData{'pressureMB'} = $modata->{'alt'} * 33.8639;
+	# $wetData{'pressureMB'} = int($wetData{'pressureMB'} + .5 * ($wetData{'pressureMB'} <=> 0)); #Funky round			
+	# $wetData{'pressureT'} = '~' if $modata->{'baroTrnd'} == 0;
+	# $wetData{'pressureT'} = '+' if $modata->{'baroTrnd'} == 1;
+	# $wetData{'pressureT'} = '-' if $modata->{'baroTrnd'} == 2;
+	# $wetData{'humidity'} = $modata->{'rH'} . '%';
+	# $wetData{'UVindexNum'} = $modata->{'uvIdx'};
+	# $wetData{'UVindexTxt'} = $modata->{'uvDes'};
 
 	# not currently supporting these here - seem to be all forecast stuff
 	# which isn't in the MO record jjj
