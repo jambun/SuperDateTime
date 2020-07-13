@@ -3044,6 +3044,7 @@ sub gotWeatherToday {  #Weather data for today was received
 			$line =~ / (M?\d\d)\/M?\d\d Q(\d+)/;
 			$temp = $1;
 			$temp =~ s/M/-/;
+			$temp =~ s/0(\d)/\1/;
 			$baro = $2;
 			last;
 		}
