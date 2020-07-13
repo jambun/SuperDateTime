@@ -3041,7 +3041,7 @@ sub gotWeatherToday {  #Weather data for today was received
 
 	for my $line (split("\n", $content)) {
 		if ($line =~ /^ *YSCB/) {
-			$line =~ / (M?\d\d)\/M?\d\d Q(\d+) /;
+			$line =~ / (M?\d\d)\/M?\d\d Q(\d+)/;
 			$temp = $1;
 			$temp =~ s/M/-/;
 			$baro = $2;
