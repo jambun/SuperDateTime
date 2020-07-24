@@ -2809,7 +2809,7 @@ sub gotLongWeatherTxt {  #Long weather data was received
 }
 
 sub drawEach {
-	$log->debug("Start");
+#	$log->debug("Start");
 	my ($timerObj, $client, $period, $formatLoc) = @_;
 	    #^Should be undef
 	
@@ -2819,7 +2819,7 @@ sub drawEach {
 		$destLoc = scalar @{$displayInfoBuild{$client}{'TOPdisplayItems1'}};
 	}
 	
-	$log->debug("Drawing scrn $destLoc $client $period");
+#	$log->debug("Drawing scrn $destLoc $client $period");
 	
 	my @show1icon  = @{ $prefs->client($client)->get('show1icon') || [] };
 	my @show13line = @{ $prefs->client($client)->get('show13line') || [] };
@@ -2898,7 +2898,7 @@ sub drawEach {
 		doneDrawing($client);
 	}
 	
-	$log->debug("Finish");
+#	$log->debug("Finish");
 }
 
 sub replaceMacros {
@@ -3043,12 +3043,16 @@ sub gotWeatherToday {  #Weather data for today was received
 		if ($line =~ /^ *YSCB/) {
 			$line =~ / (M?\d\d)\/M?\d\d Q(\d+)/;
 			$temp = $1;
+			$baro = $2;
 			$temp =~ s/M/-/;
 			$temp =~ s/0(\d)/\1/;
-			$baro = $2;
 			last;
 		}
 	}
+
+# jjjj
+
+#	$log->info("JJJJJJ  $temp  $baro");
 
 #	my $tree = HTML::TreeBuilder->new; # empty tree
 #	$tree->parse($content);
@@ -3068,7 +3072,7 @@ sub gotWeatherToday {  #Weather data for today was received
 
 	$wetData{'temperatureC'} = $temp;
 	$wetData{'pressureMB'} = $baro;
-	$wetData{'pressureT'} = '?';
+	$wetData{'pressureT'} = ' hPa';
 	$wetData{'UVindexTxt'} = 'moo';
 	
 #	$wetData{'temperatureF'} = $modata->{'tmpF'};
