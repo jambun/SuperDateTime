@@ -3101,6 +3101,7 @@ sub gotWeatherToday {  #Weather data for today was received
 		'BKN' => '6',
 		'SCT' => '5',
 		'NCD' => '4',
+		'OVCDZ' => '25',
 		'OVC-RA' => '25',
 		'OVCRA' => '26',
 		'OVC+RA' => '27',
