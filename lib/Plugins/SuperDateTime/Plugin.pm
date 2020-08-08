@@ -3036,6 +3036,7 @@ sub gotWeatherToday {  #Weather data for today was received
 
 	my $content = $http->content();
 
+	my $metar;
 	my $temp;
 	my $baro;
 
@@ -3046,6 +3047,7 @@ sub gotWeatherToday {  #Weather data for today was received
 			$baro = $2;
 			$temp =~ s/M/-/;
 			$temp =~ s/0(\d)/\1/;
+			$metar = $line;
 			last;
 		}
 	}
@@ -3069,6 +3071,57 @@ sub gotWeatherToday {  #Weather data for today was received
 #	}
 
 	$wetData{-1}{'forecastTOD'} = 'Right Now';
+#jjjj
+
+	$wetData{0}{'forecastIcon'} = '9'; # unknown
+
+	my $cloud = '';
+	my $precip = '';
+
+	if ($metar =~ / OVC\d/) {
+		$cloud = 'OVC';
+	} elsif ($metar =~ / BKN\d/) {
+		$cloud = 'BKN';
+	} elsif ($metar =~ / SCT\d/) {
+		$cloud = 'SCT';
+	} elsif ($metar =~ / FEW\d/) {
+		$cloud = 'SCT';
+	} else {
+		$cloud = 'NCD';
+	}
+
+	if ($metar =~ /9999 ([+-]?[A-Z]{2,4}) /) {
+		$precip = $1;
+	}
+
+	my $metar_key = [$cloud, $precip].join('');
+
+	my %metar_map = {
+		'OVC' => '0',
+		'BKN' => '6',
+		'SCT' => '5',
+		'NCD' => '4',
+		'OVC-RA' => '25',
+		'OVCRA' => '26',
+		'OVC+RA' => '27',
+		'OVC-SHRA' => '1',
+		'OVCSHRA' => '1',
+		'OVC+SHRA' => '1',
+		'OVCTS' => '2',
+		'OVC-SN' => '18',
+		'OVCSN' => '3',
+		'OVC+SN' => '20',
+		'BKN-RA' => '7',
+		'BKNRA' => '7',
+		'BKN+RA' => '29',
+		'BKN-SHRA' => '7',
+		'BKNSHRA' => '7',
+		'BKN+SHRA' => '29'
+	};
+
+	if ($metar_map{$metar_key}) {
+		$wetData{0}{'forecastIcon'} = $metar_map{$metar_key};
+	}
 
 	$wetData{'temperatureC'} = $temp;
 	$wetData{'pressureMB'} = $baro;
