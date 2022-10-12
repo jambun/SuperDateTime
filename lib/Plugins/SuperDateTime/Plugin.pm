@@ -2837,7 +2837,9 @@ sub drawEach {
 	
 	#Draw icons
 	if ($show1icon[$formatLoc] == 1) {
-		drawIcon($client,0,$ymax{$client}-1, $Icons[$Iconmap{$wetData{$period}{'forecastIcon'}}]);		
+		# jjj
+		drawIcon($client,0,$ymax{$client}-1, $Icons[$wetData{$period}{'forecastIcon'}]);
+#		drawIcon($client,0,$ymax{$client}-1, $Icons[$Iconmap{$wetData{$period}{'forecastIcon'}}]);		
 		$displayInfoBuild{$client}{'hasIcon'}[$destLoc] = 1;
 	}
 	
@@ -3094,33 +3096,36 @@ sub gotWeatherToday {  #Weather data for today was received
 		$precip = $1;
 	}
 
-	my $metar_key = [$cloud, $precip].join('');
+#	my $metar_key = [$cloud, $precip].join('');
+	my $metar_key = "$cloud$precip";
 
-	my %metar_map = {
-		'OVC' => '0',
-		'BKN' => '6',
-		'SCT' => '5',
-		'NCD' => '4',
-		'OVCDZ' => '25',
-		'OVC-RA' => '25',
-		'OVCRA' => '26',
-		'OVC+RA' => '27',
-		'OVC-SHRA' => '1',
-		'OVCSHRA' => '1',
-		'OVC+SHRA' => '1',
-		'OVCTS' => '2',
-		'OVC-SN' => '18',
-		'OVCSN' => '3',
-		'OVC+SN' => '20',
-		'BKN-RA' => '7',
-		'BKNRA' => '7',
-		'BKN+RA' => '29',
-		'BKN-SHRA' => '7',
-		'BKNSHRA' => '7',
-		'BKN+SHRA' => '29'
-	};
+	# FIXME: use moon versions of icons when night
+    my %metar_map = (
+		'OVC' => 0,
+		'BKN' => 6,
+		'SCT' => 5,
+		'NCD' => 4,
+		'OVCDZ' => 25,
+		'OVC-RA' => 25,
+		'OVCRA' => 26,
+		'OVC+RA' => 27,
+		'OVC-SHRA' => 1,
+		'OVCSHRA' => 1,
+		'OVC+SHRA' => 1,
+		'OVCTS' => 2,
+		'OVC-SN' => 18,
+		'OVCSN' => 3,
+		'OVC+SN' => 20,
+		'BKN-RA' => 7,
+		'BKNRA' => 7,
+		'BKN+RA' => 29,
+		'BKN-SHRA' => 7,
+		'BKNSHRA' => 7,
+		'BKN+SHRA' => 29
+	);
 
-	if ($metar_map{$metar_key}) {
+	# jjj
+	if (defined $metar_map{$metar_key}) {
 		$wetData{0}{'forecastIcon'} = $metar_map{$metar_key};
 	}
 
