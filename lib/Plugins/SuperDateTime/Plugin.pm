@@ -2930,6 +2930,8 @@ sub replaceMacros {
 		s/%W/$wetData{'windspeed_kh'}/;
 		s/%q/$wetData{'windspeed_kth'}/;
 		s/%Q/$wetData{'windspeed_ms'}/;		
+		s/%Y/$wetData{'winddir_comp'}/;
+		s/%Z/$wetData{'winddesc'}/;
 		s/%u/$wetData{'UVindexNum'}/;
 		s/%U/$wetData{'UVindexTxt'}/;
 		s/%b/$wetData{'rain'}/;
@@ -3079,6 +3081,10 @@ sub gotWeatherToday {  #Weather data for today was received
 
 	my $cloud = '';
 	my $precip = '';
+	my $windspeed = '';
+	my $windgust = '';
+	my $winddir = '';
+	my $winddesc = '';
 
 	if ($metar =~ / OVC\d/) {
 		$cloud = 'OVC';
@@ -3094,6 +3100,33 @@ sub gotWeatherToday {  #Weather data for today was received
 
 	if ($metar =~ /9999 ([+-]?[A-Z]{2,4}) /) {
 		$precip = $1;
+	}
+
+	if ($metar =~ / (\d\d\d)(\d\d)(G(\d\d))?(KT|MPS) /) {
+		$windspeed = sprintf("%.0fkph", ($2 * ($5 eq 'KT' ? 1.852 : 3.6)));
+
+		if ($4) {
+			$windgust = sprintf("%.0fkph", ($4 * ($5 eq 'KT' ? 1.852 : 3.6)));
+		}
+
+		my $deg = int($1);
+
+		my @points = qw/N NNE NE ENE E ESE SE SSE S SSW SW WSW W WNW NW NNW/;
+		my $segment ||= 360.0 / @points;
+
+		my $ix = int(sprintf("%.0f", ($deg / $segment)));
+		$ix -= @points if $ix >= @points;
+
+		$winddir = @points[$ix];
+
+		if ($windspeed eq '0kph') {
+			$winddesc = 'No wind';
+		} else {
+			$winddesc = sprintf("%s @ %s", $winddir, $windspeed);
+			if ($windgust) {
+				$winddesc .= " (gust " . $windgust . ")";
+			}
+		}
 	}
 
 #	my $metar_key = [$cloud, $precip].join('');
@@ -3133,6 +3166,12 @@ sub gotWeatherToday {  #Weather data for today was received
 	$wetData{'pressureMB'} = $baro;
 	$wetData{'pressureT'} = ' hPa';
 	$wetData{'UVindexTxt'} = 'moo';
+
+	$wetData{'windspeed_kh'} = $windspeed;
+	$wetData{'winddir_comp'} = $winddir;
+	$wetData{'winddesc'} = $winddesc;
+
+
 	
 #	$wetData{'temperatureF'} = $modata->{'tmpF'};
 #	$wetData{'temperatureC'} = $modata->{'tmpC'};
