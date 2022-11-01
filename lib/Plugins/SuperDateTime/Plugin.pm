@@ -3098,7 +3098,7 @@ sub gotWeatherToday {  #Weather data for today was received
 		$cloud = 'NCD';
 	}
 
-	if ($metar =~ /9999 ([+-]?[A-Z]{2,4}) /) {
+	if ($metar =~ / \d\d\d\d ([+-]?[A-Z]{2,4}) /) {
 		$precip = $1;
 	}
 
