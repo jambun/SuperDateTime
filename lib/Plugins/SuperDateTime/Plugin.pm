@@ -3098,8 +3098,8 @@ sub gotWeatherToday {  #Weather data for today was received
 		$cloud = 'NCD';
 	}
 
-	if ($metar =~ / \d\d\d\d ([+-]?[A-Z]{2,4}) /) {
-		$precip = $1;
+	if ($metar =~ / \d\d\d\d (VC..)? ([+-]?[A-Z]{2,4}) /) {
+		$precip = $2;
 	}
 
 	if ($metar =~ / (\d\d\d)(\d\d)(G(\d\d))?(KT|MPS) /) {
